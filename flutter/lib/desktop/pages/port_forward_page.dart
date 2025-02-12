@@ -25,17 +25,23 @@ class _PortForward {
 }
 
 class PortForwardPage extends StatefulWidget {
-  const PortForwardPage(
-      {Key? key,
-      required this.id,
-      required this.tabController,
-      required this.isRDP,
-      this.forceRelay})
-      : super(key: key);
+  const PortForwardPage({
+    Key? key,
+    required this.id,
+    required this.password,
+    required this.tabController,
+    required this.isRDP,
+    required this.isSharedPassword,
+    this.forceRelay,
+    this.connToken,
+  }) : super(key: key);
   final String id;
+  final String? password;
   final DesktopTabController tabController;
   final bool isRDP;
   final bool? forceRelay;
+  final bool? isSharedPassword;
+  final String? connToken;
 
   @override
   State<PortForwardPage> createState() => _PortForwardPageState();
@@ -52,14 +58,20 @@ class _PortForwardPageState extends State<PortForwardPage>
   @override
   void initState() {
     super.initState();
-    _ffi = FFI();
+    _ffi = FFI(null);
     _ffi.start(widget.id,
         isPortForward: true,
+        password: widget.password,
+        isSharedPassword: widget.isSharedPassword,
         forceRelay: widget.forceRelay,
+        connToken: widget.connToken,
         isRdp: widget.isRDP);
-    Get.put(_ffi, tag: 'pf_${widget.id}');
+    Get.put<FFI>(_ffi, tag: 'pf_${widget.id}');
     debugPrint("Port forward page init success with id ${widget.id}");
-    widget.tabController.onSelected?.call(widget.id);
+    // Call onSelected in post frame callback, since we cannot guarantee that the callback will not call setState.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.tabController.onSelected?.call(widget.id);
+    });
   }
 
   @override
@@ -135,8 +147,9 @@ class _PortForwardPageState extends State<PortForwardPage>
         child: Text(translate(label)).marginOnly(left: _kTextLeftMargin));
 
     return Theme(
-      data: Theme.of(context)
-          .copyWith(backgroundColor: Theme.of(context).colorScheme.background),
+      data: Theme.of(context).copyWith(
+        colorScheme: Theme.of(context).colorScheme,
+      ),
       child: Obx(() => ListView.builder(
           controller: ScrollController(),
           itemCount: pfs.length + 2,
@@ -225,7 +238,7 @@ class _PortForwardPageState extends State<PortForwardPage>
               inputFormatters: inputFormatters,
               decoration: InputDecoration(
                 hintText: hint,
-              ))),
+              )).workaroundFreezeLinuxMint()),
     );
   }
 
@@ -263,7 +276,7 @@ class _PortForwardPageState extends State<PortForwardPage>
   }
 
   void refreshTunnelConfig() async {
-    String peer = await bind.mainGetPeer(id: widget.id);
+    String peer = bind.mainGetPeerSync(id: widget.id);
     Map<String, dynamic> config = jsonDecode(peer);
     List<dynamic> infos = config['port_forwards'] as List;
     List<_PortForward> result = List.empty(growable: true);
@@ -283,7 +296,7 @@ class _PortForwardPageState extends State<PortForwardPage>
         ).marginOnly(left: _kTextLeftMargin));
     return Theme(
       data: Theme.of(context)
-          .copyWith(backgroundColor: Theme.of(context).colorScheme.background),
+          .copyWith(colorScheme: Theme.of(context).colorScheme),
       child: ListView.builder(
           controller: ScrollController(),
           itemCount: 2,
